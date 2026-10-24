@@ -10,7 +10,7 @@ import {
 import {
   changeInterestStatus, createInterest, createListing, createReport, getAdminListings, getCurrentUser, getImpactStats,
   getListing, imageForCategory, isLiveBackend, listInterests, listListings, listReports, moderateListing, resolveReport,
-  signIn as serviceSignIn, signOut as serviceSignOut, signUp as serviceSignUp, subscribeAuth, updateListing,
+  resendSignupConfirmation, signIn as serviceSignIn, signOut as serviceSignOut, signUp as serviceSignUp, subscribeAuth, updateListing,
   updateListingStatus,
 } from './services/store'
 import type { AppUser, InterestRequest, Listing, ListingInput, ListingReport } from './types'
@@ -211,6 +211,7 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [resendingConfirmation, setResendingConfirmation] = useState(false)
   const isSignup = mode === 'signup'
   async function submit(e: FormEvent) {
     e.preventDefault(); setError('')
@@ -230,6 +231,19 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.') }
     finally { setLoading(false) }
   }
+  async function resendConfirmation() {
+    setError('')
+    if (!email.trim()) { setError('Enter your email address above first.'); return }
+    setResendingConfirmation(true)
+    try {
+      await resendSignupConfirmation(email)
+      toast('Confirmation email requested. Open the newest email and use its confirmation link.', 'info')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resend the confirmation email. Please try again.')
+    } finally {
+      setResendingConfirmation(false)
+    }
+  }
   async function demo(role: 'user' | 'admin') {
     setLoading(true); setError('')
     try { const user = await serviceSignIn(role === 'admin' ? 'admin@reusehub.local' : 'student@reusehub.local', 'local-demo-password', role, role === 'admin' ? 'Demo Admin' : 'Demo Student'); setUser(user); toast(role === 'admin' ? 'Entered local demo administrator view.' : 'Welcome to the local demo!'); navigate(role === 'admin' ? '/admin' : next) }
@@ -242,6 +256,7 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <div className="field"><label htmlFor="auth-password">Password</label><div className="input-icon-wrap"><LockKeyhole size={17}/><input id="auth-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete={isSignup ? 'new-password' : 'current-password'}/><button type="button" className="show-password" onClick={() => setShowPassword(v => !v)}>{showPassword ? 'Hide' : 'Show'}</button></div></div>
         {error && <div className="form-error"><CircleAlert size={16}/>{error}</div>}<button type="submit" className="btn btn-primary btn-full btn-large" disabled={loading}>{loading ? <><span className="spinner spinner-light"/> Please wait…</> : <>{isSignup ? 'Create account' : 'Sign in'} <ArrowRight size={17}/></>}</button>
       </form>
+      {isLiveBackend() && !isSignup && <div className="resend-confirmation"><p>Did you create an account but haven't confirmed your email yet?</p><button type="button" className="btn btn-text btn-full" onClick={resendConfirmation} disabled={loading || resendingConfirmation}>{resendingConfirmation ? 'Sending confirmation email…' : 'Resend confirmation email'}</button></div>}
       <div className="auth-switch">{isSignup ? 'Already part of the community?' : 'New to ReuseHub?'} <Link to={isSignup ? '/login' : '/signup'}>{isSignup ? 'Sign in' : 'Create an account'}</Link></div>
       {!isLiveBackend() && <div className="demo-login"><div className="demo-login-label"><Sparkles size={15}/> Explore without backend setup</div><p>Local demo data is saved in this browser only. Demo accounts are for testing, not real authentication.</p><button className="btn btn-outline btn-full" onClick={() => demo('user')} disabled={loading}><UserRound size={16}/> Continue as demo student</button><button className="btn btn-text btn-full" onClick={() => demo('admin')} disabled={loading}><ShieldCheck size={16}/> Open demo admin view</button></div>}
       {isLiveBackend() && <div className="auth-security-note"><ShieldCheck size={16}/> Your sign-in is handled securely by Supabase Authentication.</div>}

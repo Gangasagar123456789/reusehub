@@ -102,7 +102,17 @@ export async function signIn(email: string, password: string, demoRole: 'user' |
 
 export async function signUp(displayName: string, email: string, password: string): Promise<{ user: AppUser | null; confirmationRequired: boolean }> {
   if (supabase) {
-    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } })
+    // Send users back to the same origin where they started signup. Ensure this
+    // origin is allow-listed in Supabase Auth > URL Configuration.
+    const emailRedirectTo = window.location.origin
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: { display_name: displayName.trim() },
+        emailRedirectTo,
+      },
+    })
     if (error) throw new Error(error.message)
     if (!data.user) throw new Error('Account could not be created.')
     const user = data.session ? await getCurrentUser() : null
@@ -115,6 +125,18 @@ export async function signUp(displayName: string, email: string, password: strin
   const user: AppUser = { id: `local-${email.trim().toLowerCase()}`, email: email.trim().toLowerCase(), displayName: displayName.trim(), role: 'user' }
   write(LS.session, user)
   return { user, confirmationRequired: false }
+}
+
+
+/** Resend the Supabase signup confirmation email using the current site origin. */
+export async function resendSignupConfirmation(email: string): Promise<void> {
+  if (!supabase) throw new Error('Email confirmation is only available when Supabase is configured.')
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: email.trim().toLowerCase(),
+    options: { emailRedirectTo: window.location.origin },
+  })
+  if (error) throw new Error(error.message)
 }
 
 export async function signOut() {
