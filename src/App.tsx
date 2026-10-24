@@ -356,14 +356,17 @@ function ItemDetailsPage() {
   const alreadyRequested = myRequests.some(r => r.listingId === listing.id && ['pending', 'accepted'].includes(r.status))
   async function requestItem(e: FormEvent) {
     e.preventDefault()
+   if (!listing) return 
     if (!user) { navigate(`/login?next=${encodeURIComponent(`/items/${listing.id}`)}`); return }
     setRequesting(true)
     try { await createInterest(user, listing.id, message); toast('Interest sent. You can track it in your dashboard.'); setShowRequest(false); await load() }
     catch (err) { toast(err instanceof Error ? err.message : 'Could not send request.', 'error') }
     finally { setRequesting(false) }
   }
+  if (!listing) return
   async function reportItem(e: FormEvent) {
     e.preventDefault()
+    if (!listing) return
     if (!user) { navigate(`/login?next=${encodeURIComponent(`/items/${listing.id}`)}`); return }
     try { await createReport(user, listing.id, reportReason, reportDetails); toast('Thanks. Your report has been submitted for review.'); setReportOpen(false); setReportDetails('') }
     catch (err) { toast(err instanceof Error ? err.message : 'Could not submit report.', 'error') }
