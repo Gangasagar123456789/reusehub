@@ -1,5 +1,8 @@
 # ReuseHub
 
+> **Authentication fix:** See [`AUTH_FIX_GUIDE.md`](./AUTH_FIX_GUIDE.md) for the signup confirmation redirect fix and required Supabase URL settings.
+
+
 **Tagline:** Give it another chapter.
 
 ReuseHub is a student-focused platform for donating educational resources for free or reselling them at an affordable, seller-chosen price. It includes searchable listings, listing photos, MRP-based savings displays, buyer interest requests, reservation/completion workflows, reports, and an administrator moderation area.
