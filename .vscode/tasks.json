@@ -1,0 +1,22 @@
+
+
+
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run ReuseHub",
+      "type": "shell",
+      "command": "start \"\" http://localhost:5173/ && npm.cmd run dev",
+      "options": {
+        "cwd": "C:\\Users\\HP\\Downloads\\reusehub_project_source\\reusehub",
+        "shell": {
+          "executable": "C:\\Windows\\System32\\cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
