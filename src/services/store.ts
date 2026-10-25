@@ -1,5 +1,5 @@
 import { supabase, supabaseConfigured } from '../lib/supabase'
-import type { AppUser, InterestRequest, Listing, ListingInput, ListingReport, ListingStatus, ModerationStatus } from '../types'
+import type { AppUser, InterestRequest, Listing, ListingInput, ListingReport, ListingStatus, ModerationStatus, SellerContact, SellerContactInput } from '../types'
 
 const LS = {
   listings: 'reusehub:listings:v1',
@@ -7,6 +7,7 @@ const LS = {
   reports: 'reusehub:reports:v1',
   users: 'reusehub:users:v1',
   session: 'reusehub:session:v1',
+  contacts: 'reusehub:seller-contacts:v1',
 }
 
 const fallbackImages: Record<string, string> = {
@@ -66,8 +67,88 @@ function toInterest(row: any): InterestRequest {
 function toReport(row: any): ListingReport {
   return { id: row.id, listingId: row.listing_id, reporterId: row.reporter_id, reason: row.reason, details: row.details || '', status: row.status, createdAt: row.created_at }
 }
+function toSellerContact(row: any): SellerContact {
+  return {
+    userId: row.user_id,
+    phoneNumber: row.phone_number || '',
+    whatsappNumber: row.whatsapp_number || '',
+    isPublic: Boolean(row.is_public),
+    updatedAt: row.updated_at || new Date().toISOString(),
+  }
+}
+
 function toProfile(row: any, email = ''): AppUser {
   return { id: row.id, email, displayName: row.display_name || email.split('@')[0] || 'Student', institution: row.institution || '', academicYear: row.academic_year || '', role: row.role === 'admin' ? 'admin' : 'user' }
+}
+
+export async function getSellerContact(sellerId: string, viewerId?: string, listingId?: string): Promise<SellerContact | null> {
+  if (supabase) {
+    if (viewerId === sellerId) {
+      // Sellers can read their own contact record, including while it is private.
+      const { data, error } = await supabase
+        .from('seller_contacts')
+        .select('user_id,phone_number,whatsapp_number,is_public,updated_at')
+        .eq('user_id', sellerId)
+        .maybeSingle()
+      if (error) throw new Error(error.message)
+      return data ? toSellerContact(data) : null
+    }
+
+    // Public viewers can only request contact information in the context of a real,
+    // approved, active listing; the table itself is not publicly enumerable.
+    if (!listingId) return null
+    const { data, error } = await supabase.rpc('get_public_seller_contact', { p_listing_id: listingId })
+    if (error) throw new Error(error.message)
+    const row = Array.isArray(data) ? data[0] : data
+    return row ? toSellerContact(row) : null
+  }
+
+  const contacts = read<Record<string, SellerContact>>(LS.contacts, {})
+  const contact = contacts[sellerId]
+  if (!contact || (!contact.isPublic && viewerId !== sellerId)) return null
+  return contact
+}
+
+export async function saveSellerContact(user: AppUser, input: SellerContactInput): Promise<SellerContact> {
+  const phoneNumber = input.phoneNumber.trim()
+  const whatsappNumber = input.whatsappNumber.trim()
+  const validateNumber = (value: string, label: string) => {
+    if (!value) return
+    const digits = value.replace(/\D/g, '')
+    if (digits.length < 7 || digits.length > 15) {
+      throw new Error(`${label} should contain 7 to 15 digits, including the country code when applicable.`)
+    }
+  }
+  validateNumber(phoneNumber, 'Phone number')
+  validateNumber(whatsappNumber, 'WhatsApp number')
+  if (whatsappNumber && !whatsappNumber.startsWith('+')) {
+    throw new Error('WhatsApp number must start with + and include the country code, for example +91 98765 43210.')
+  }
+  if (input.isPublic && !phoneNumber && !whatsappNumber) {
+    throw new Error('Add a phone number or WhatsApp number before making contact details public.')
+  }
+  const updatedAt = new Date().toISOString()
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('seller_contacts')
+      .upsert({
+        user_id: user.id,
+        phone_number: phoneNumber,
+        whatsapp_number: whatsappNumber,
+        is_public: input.isPublic,
+        updated_at: updatedAt,
+      }, { onConflict: 'user_id' })
+      .select('user_id,phone_number,whatsapp_number,is_public,updated_at')
+      .single()
+    if (error) throw new Error(error.message)
+    return toSellerContact(data)
+  }
+
+  const contacts = read<Record<string, SellerContact>>(LS.contacts, {})
+  const contact: SellerContact = { userId: user.id, phoneNumber, whatsappNumber, isPublic: input.isPublic, updatedAt }
+  write(LS.contacts, { ...contacts, [user.id]: contact })
+  return contact
 }
 
 export const isLiveBackend = () => supabaseConfigured
@@ -102,17 +183,7 @@ export async function signIn(email: string, password: string, demoRole: 'user' |
 
 export async function signUp(displayName: string, email: string, password: string): Promise<{ user: AppUser | null; confirmationRequired: boolean }> {
   if (supabase) {
-    // Send users back to the same origin where they started signup. Ensure this
-    // origin is allow-listed in Supabase Auth > URL Configuration.
-    const emailRedirectTo = window.location.origin
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
-      password,
-      options: {
-        data: { display_name: displayName.trim() },
-        emailRedirectTo,
-      },
-    })
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName } } })
     if (error) throw new Error(error.message)
     if (!data.user) throw new Error('Account could not be created.')
     const user = data.session ? await getCurrentUser() : null
@@ -125,18 +196,6 @@ export async function signUp(displayName: string, email: string, password: strin
   const user: AppUser = { id: `local-${email.trim().toLowerCase()}`, email: email.trim().toLowerCase(), displayName: displayName.trim(), role: 'user' }
   write(LS.session, user)
   return { user, confirmationRequired: false }
-}
-
-
-/** Resend the Supabase signup confirmation email using the current site origin. */
-export async function resendSignupConfirmation(email: string): Promise<void> {
-  if (!supabase) throw new Error('Email confirmation is only available when Supabase is configured.')
-  const { error } = await supabase.auth.resend({
-    type: 'signup',
-    email: email.trim().toLowerCase(),
-    options: { emailRedirectTo: window.location.origin },
-  })
-  if (error) throw new Error(error.message)
 }
 
 export async function signOut() {

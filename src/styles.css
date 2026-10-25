@@ -31,7 +31,37 @@
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 .sample-explainer{display:flex;align-items:flex-start;gap:9px;background:#f4f2e9;border:1px solid #e8e2ce;border-radius:10px;padding:13px;color:#8a7948}.sample-explainer>svg{flex-shrink:0}.sample-explainer>span{display:flex;flex-direction:column;gap:5px}.sample-explainer strong{font-family:Manrope,sans-serif;font-size:11px;color:#78663c}.sample-explainer small{font-size:10px;line-height:1.65;color:#8e8161}
 
-/* Email confirmation helper on the live login page */
-.resend-confirmation{margin-top:14px;padding:12px 13px;border:1px solid #e5eadf;border-radius:10px;background:#fafbf7;text-align:center}
-.resend-confirmation p{margin:0 0 5px;color:#758174;font-size:11px;line-height:1.55}
-.resend-confirmation .btn{font-size:11px}
+
+/* Seller contact feature */
+.seller-contact-card{display:flex;flex-direction:column;gap:13px;margin:18px 0 14px;padding:15px;border:1px solid #dce8d8;border-radius:12px;background:#f8faf5}
+.seller-contact-heading{display:flex;align-items:center;gap:10px}
+.seller-contact-icon{display:grid;place-items:center;width:37px;height:37px;flex-shrink:0;border-radius:10px;background:#e4eee0;color:#4c7951}
+.seller-contact-heading>div{display:flex;flex-direction:column;gap:4px}
+.seller-contact-heading strong{font-family:Manrope,sans-serif;font-size:12px;color:#35493a}
+.seller-contact-heading small{font-size:10px;line-height:1.5;color:#7d8b7b}
+.seller-contact-actions{display:flex;gap:8px;flex-wrap:wrap}
+.seller-contact-actions .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.btn-whatsapp{background:#187c4c;border:1px solid #187c4c;color:#fff}
+.btn-whatsapp:hover{background:#146c42;color:#fff}
+.seller-contact-unavailable{margin:0;color:#7d8b7b;font-size:11px;line-height:1.65}
+.seller-contact-settings{max-width:780px;margin-top:2px}
+.seller-contact-settings-heading{margin-bottom:22px}
+.seller-contact-settings-heading h2{font-family:Manrope,sans-serif;font-size:24px;color:#35493a;margin:8px 0}
+.seller-contact-settings-heading p{max-width:620px;font-size:12px;line-height:1.7;color:#778474;margin:0}
+.contact-settings-form{display:flex;flex-direction:column;gap:19px}
+.contact-settings-form .field{display:flex;flex-direction:column;gap:7px}
+.contact-settings-form .field label{font-size:12px;font-weight:700;color:#35493a}
+.contact-settings-form .field input{width:100%;min-height:43px;padding:11px 12px;border:1px solid #dfe5d9;border-radius:8px;background:#fffefa;color:#344536;font:inherit;font-size:12px;outline:none}
+.contact-settings-form .field input:focus{border-color:#80a47d;box-shadow:0 0 0 3px rgba(83,128,80,.1)}
+.contact-settings-form .field small{font-size:10px;line-height:1.55;color:#879184}
+.contact-public-toggle{display:flex;align-items:flex-start;gap:11px;padding:14px;border:1px solid #dce8d8;border-radius:10px;background:#f7faf4;cursor:pointer}
+.contact-public-toggle input{width:17px;height:17px;margin-top:2px;accent-color:#4b7950;flex-shrink:0}
+.contact-public-toggle span{display:flex;flex-direction:column;gap:6px}
+.contact-public-toggle strong{font-family:Manrope,sans-serif;font-size:11px;color:#35493a}
+.contact-public-toggle small{font-size:10px;line-height:1.65;color:#71816e}
+.contact-settings-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.contact-settings-footer>span{display:flex;align-items:flex-start;gap:6px;max-width:390px;color:#7f8b7c;font-size:10px;line-height:1.55}
+.contact-settings-footer>span svg{flex-shrink:0;color:#5b8b5e}
+.contact-settings-error{display:flex;align-items:flex-start;gap:8px;margin-bottom:14px;padding:11px 12px;border:1px solid #ecd7c9;border-radius:8px;background:#fff7f2;color:#925d3d;font-size:11px;line-height:1.6}
+.contact-settings-error svg{flex-shrink:0;margin-top:1px}
+@media(max-width:650px){.seller-contact-actions .btn{flex:1;font-size:10px;padding:10px 8px}.seller-contact-settings-heading h2{font-size:21px}.contact-settings-footer{align-items:stretch;flex-direction:column}.contact-settings-footer .btn{width:100%}.dashboard-tabs{overflow-x:auto}.dashboard-tabs button{white-space:nowrap}}

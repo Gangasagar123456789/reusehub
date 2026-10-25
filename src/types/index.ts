@@ -56,6 +56,20 @@ export interface ListingReport {
   createdAt: string
 }
 
+export interface SellerContact {
+  userId: string
+  phoneNumber: string
+  whatsappNumber: string
+  isPublic: boolean
+  updatedAt: string
+}
+
+export interface SellerContactInput {
+  phoneNumber: string
+  whatsappNumber: string
+  isPublic: boolean
+}
+
 export interface ListingInput {
   title: string
   description: string
