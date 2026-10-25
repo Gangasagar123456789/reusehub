@@ -5,15 +5,15 @@ import {
   ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Clock3, Filter, Heart, HeartHandshake, IndianRupee,
   Leaf, LockKeyhole, LogIn, LogOut, Menu, MessageCircle, PackageCheck, PackagePlus, Search, ShieldCheck,
   SlidersHorizontal, Sparkles, Tag, Trash2, Upload, UserRound, Users, X, Zap, GraduationCap, Bookmark,
-  LayoutDashboard, Flag, Pencil, RefreshCw, CircleHelp, Mail, ExternalLink
+  LayoutDashboard, Flag, Pencil, RefreshCw, CircleHelp, Mail, ExternalLink, Phone
 } from 'lucide-react'
 import {
   changeInterestStatus, createInterest, createListing, createReport, getAdminListings, getCurrentUser, getImpactStats,
   getListing, imageForCategory, isLiveBackend, listInterests, listListings, listReports, moderateListing, resolveReport,
-  resendSignupConfirmation, signIn as serviceSignIn, signOut as serviceSignOut, signUp as serviceSignUp, subscribeAuth, updateListing,
-  updateListingStatus,
+  signIn as serviceSignIn, signOut as serviceSignOut, signUp as serviceSignUp, subscribeAuth, updateListing,
+  updateListingStatus, getSellerContact, saveSellerContact,
 } from './services/store'
-import type { AppUser, InterestRequest, Listing, ListingInput, ListingReport } from './types'
+import type { AppUser, InterestRequest, Listing, ListingInput, ListingReport, SellerContact } from './types'
 import './styles.css'
 
 const categories = [
@@ -211,7 +211,6 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [resendingConfirmation, setResendingConfirmation] = useState(false)
   const isSignup = mode === 'signup'
   async function submit(e: FormEvent) {
     e.preventDefault(); setError('')
@@ -231,19 +230,6 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.') }
     finally { setLoading(false) }
   }
-  async function resendConfirmation() {
-    setError('')
-    if (!email.trim()) { setError('Enter your email address above first.'); return }
-    setResendingConfirmation(true)
-    try {
-      await resendSignupConfirmation(email)
-      toast('Confirmation email requested. Open the newest email and use its confirmation link.', 'info')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not resend the confirmation email. Please try again.')
-    } finally {
-      setResendingConfirmation(false)
-    }
-  }
   async function demo(role: 'user' | 'admin') {
     setLoading(true); setError('')
     try { const user = await serviceSignIn(role === 'admin' ? 'admin@reusehub.local' : 'student@reusehub.local', 'local-demo-password', role, role === 'admin' ? 'Demo Admin' : 'Demo Student'); setUser(user); toast(role === 'admin' ? 'Entered local demo administrator view.' : 'Welcome to the local demo!'); navigate(role === 'admin' ? '/admin' : next) }
@@ -256,7 +242,6 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <div className="field"><label htmlFor="auth-password">Password</label><div className="input-icon-wrap"><LockKeyhole size={17}/><input id="auth-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete={isSignup ? 'new-password' : 'current-password'}/><button type="button" className="show-password" onClick={() => setShowPassword(v => !v)}>{showPassword ? 'Hide' : 'Show'}</button></div></div>
         {error && <div className="form-error"><CircleAlert size={16}/>{error}</div>}<button type="submit" className="btn btn-primary btn-full btn-large" disabled={loading}>{loading ? <><span className="spinner spinner-light"/> Please wait…</> : <>{isSignup ? 'Create account' : 'Sign in'} <ArrowRight size={17}/></>}</button>
       </form>
-      {isLiveBackend() && !isSignup && <div className="resend-confirmation"><p>Did you create an account but haven't confirmed your email yet?</p><button type="button" className="btn btn-text btn-full" onClick={resendConfirmation} disabled={loading || resendingConfirmation}>{resendingConfirmation ? 'Sending confirmation email…' : 'Resend confirmation email'}</button></div>}
       <div className="auth-switch">{isSignup ? 'Already part of the community?' : 'New to ReuseHub?'} <Link to={isSignup ? '/login' : '/signup'}>{isSignup ? 'Sign in' : 'Create an account'}</Link></div>
       {!isLiveBackend() && <div className="demo-login"><div className="demo-login-label"><Sparkles size={15}/> Explore without backend setup</div><p>Local demo data is saved in this browser only. Demo accounts are for testing, not real authentication.</p><button className="btn btn-outline btn-full" onClick={() => demo('user')} disabled={loading}><UserRound size={16}/> Continue as demo student</button><button className="btn btn-text btn-full" onClick={() => demo('admin')} disabled={loading}><ShieldCheck size={16}/> Open demo admin view</button></div>}
       {isLiveBackend() && <div className="auth-security-note"><ShieldCheck size={16}/> Your sign-in is handled securely by Supabase Authentication.</div>}
@@ -342,6 +327,7 @@ function ItemDetailsPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const [listing, setListing] = useState<Listing | null>(null)
+  const [sellerContact, setSellerContact] = useState<SellerContact | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('Hi! Is this item still available?')
@@ -353,13 +339,16 @@ function ItemDetailsPage() {
   const [related, setRelated] = useState<Listing[]>([])
   const [myRequests, setMyRequests] = useState<InterestRequest[]>([])
   const load = useCallback(async () => {
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setSellerContact(null)
     try {
       const item = listingId ? await getListing(listingId) : null
       if (!item) { setListing(null); setError('This listing could not be found. It may have been removed.'); return }
       setListing(item)
       const [others, requests] = await Promise.all([listListings({ category: item.category }), user ? listInterests(user) : Promise.resolve([])])
       setRelated(others.filter(x => x.id !== item.id).slice(0, 3)); setMyRequests(requests)
+      // Contact lookup must not break item browsing before the owner applies the new migration.
+      const contact = item.isSample ? null : await getSellerContact(item.sellerId, user?.id, item.id).catch(() => null)
+      setSellerContact(contact)
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load item details.') }
     finally { setLoading(false) }
   }, [listingId, user])
@@ -392,6 +381,7 @@ function ItemDetailsPage() {
         <div className="detail-price-block"><div className="detail-price-main"><strong>{listing.listingType === 'donation' ? 'Free' : money(listing.price)}</strong>{listing.listingType === 'resale' && listing.mrp !== null && <del>{money(listing.mrp)} MRP</del>}</div>{savings !== null && <div className="detail-savings"><span><Sparkles size={15}/></span><strong>Save {money(savings)} ({((savings / (listing.mrp || 1)) * 100).toFixed(1)}%)</strong><small>Compared with seller-declared MRP</small></div>}</div>
         <div className="detail-description"><h3>About this item</h3><p>{listing.description}</p></div>
         <div className="detail-facts"><div><span>Condition</span><strong>{listing.condition}</strong></div><div><span>Listing type</span><strong>{listing.listingType === 'donation' ? 'Free donation' : 'Resale'}</strong></div><div><span>Availability</span><strong className={`status-text status-${listing.status}`}>{listing.status === 'available' ? 'Available' : listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}</strong></div></div>
+        {['available', 'reserved'].includes(listing.status) && !isOwner && !listing.isSample && <section className="seller-contact-card" aria-label="Seller contact options"><div className="seller-contact-heading"><span className="seller-contact-icon"><Phone size={18}/></span><div><strong>Contact the seller</strong><small>Arrange questions, payment, and handover directly.</small></div></div>{sellerContact?.isPublic && (sellerContact.phoneNumber || sellerContact.whatsappNumber) ? <div className="seller-contact-actions">{sellerContact.phoneNumber && <a className="btn btn-outline btn-small" href={`tel:${sellerContact.phoneNumber.replace(/[^\d+]/g, '')}`}><Phone size={15}/> Call seller</a>}{sellerContact.whatsappNumber && <a className="btn btn-whatsapp btn-small" href={`https://wa.me/${sellerContact.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi, I’m interested in “${listing.title}” on ReuseHub. Is it still available?`)}`} target="_blank" rel="noreferrer"><MessageCircle size={15}/> WhatsApp seller</a>}</div> : <p className="seller-contact-unavailable">This seller hasn’t shared public contact details. You can still send an interest request below.</p>}</section>}
         {listing.status === 'available' && !isOwner && (listing.isSample ? <div className="sample-explainer"><Sparkles size={17}/><span><strong>Illustrative example listing</strong><small>This sample is for exploring the design. Create a listing in demo mode to test the complete request workflow.</small></span></div> : <div className="detail-actions">{alreadyRequested ? <div className="request-sent"><CircleCheck size={18}/><span><strong>You've sent a request</strong><small>Track it from your dashboard.</small></span><Link to="/dashboard" className="text-link">View</Link></div> : <button className="btn btn-primary btn-large btn-full" onClick={() => user ? setShowRequest(v => !v) : navigate(`/login?next=${encodeURIComponent(`/items/${listing.id}`)}`)}><MessageCircle size={18}/> I'm interested <ArrowRight size={17}/></button>}{showRequest && <form className="request-form" onSubmit={requestItem}><label htmlFor="request-message">Message to the seller</label><textarea id="request-message" rows={3} maxLength={500} value={message} onChange={e => setMessage(e.target.value)} placeholder="Ask a question or suggest a handover time."/><button type="submit" className="btn btn-primary btn-full" disabled={requesting}>{requesting ? 'Sending…' : 'Send interest request'}</button><small>Don't share sensitive personal information here.</small></form>}</div>)}
         {isOwner && <div className="owner-actions"><Link className="btn btn-primary btn-full" to={`/edit/${listing.id}`}><Pencil size={16}/> Edit your listing</Link><Link className="btn btn-outline btn-full" to="/dashboard">Manage requests</Link></div>}
         {listing.status === 'reserved' && <div className="reserved-note"><Clock3 size={18}/><span><strong>This item is reserved</strong><small>The seller is arranging a handover with another student.</small></span></div>}
@@ -403,11 +393,64 @@ function ItemDetailsPage() {
   </div>
 }
 
+function SellerContactSettings({ user }: { user: AppUser }) {
+  const toast = useToast()
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [whatsappNumber, setWhatsappNumber] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setLoadError('')
+    getSellerContact(user.id, user.id)
+      .then(contact => {
+        if (!active) return
+        setPhoneNumber(contact?.phoneNumber || '')
+        setWhatsappNumber(contact?.whatsappNumber || '')
+        setIsPublic(contact?.isPublic || false)
+      })
+      .catch(err => {
+        if (active) setLoadError(err instanceof Error ? err.message : 'Could not load seller contact settings. Apply the seller-contact database migration and try again.')
+      })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [user.id])
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setLoadError('')
+    try {
+      await saveSellerContact(user, { phoneNumber, whatsappNumber, isPublic })
+      toast('Seller contact settings saved.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not save seller contact settings.'
+      setLoadError(message)
+      toast(message, 'error')
+    } finally { setSaving(false) }
+  }
+
+  return <section className="seller-contact-settings panel-card">
+    <div className="seller-contact-settings-heading"><span className="eyebrow">YOUR SELLER PROFILE</span><h2>Contact details</h2><p>Add a phone number or WhatsApp number so interested students can reach you directly. Your contact details stay private until you opt in below.</p></div>
+    {loadError && <div className="contact-settings-error" role="alert"><CircleAlert size={16}/><span>{loadError}{isLiveBackend() && loadError.toLowerCase().includes('seller_contacts') ? ' The project owner must apply supabase/migrations/20261025_seller_contacts.sql in the Supabase SQL Editor.' : ''}</span></div>}
+    {loading ? <Spinner label="Loading your contact settings..."/> : <form className="contact-settings-form" onSubmit={submit}>
+      <div className="field"><label htmlFor="seller-phone">Phone number (optional)</label><input id="seller-phone" type="tel" autoComplete="tel" maxLength={40} value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="e.g. +91 98765 43210"/><small>Include your country code if needed.</small></div>
+      <div className="field"><label htmlFor="seller-whatsapp">WhatsApp number (optional)</label><input id="seller-whatsapp" type="tel" autoComplete="tel" maxLength={40} value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="e.g. +91 98765 43210"/><small>For WhatsApp links, enter the full international number with country code.</small></div>
+      <label className="contact-public-toggle" htmlFor="seller-contact-public"><input id="seller-contact-public" type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)}/><span><strong>Show my contact details on my item listings</strong><small>When enabled, the supplied phone and WhatsApp numbers are visible to anyone who can view your listings. Leave this off to keep them private and use interest requests instead.</small></span></label>
+      <div className="contact-settings-footer"><span><ShieldCheck size={15}/> Only the contact details above are published; your profile email is not shown.</span><button type="submit" className="btn btn-primary" disabled={saving || loading}>{saving ? 'Saving…' : 'Save contact settings'}</button></div>
+    </form>}
+  </section>
+}
+
 function DashboardPage() {
   const { user } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'listings' | 'incoming' | 'outgoing'>('listings')
+  const [tab, setTab] = useState<'listings' | 'incoming' | 'outgoing' | 'contact'>('listings')
   const [items, setItems] = useState<Listing[]>([])
   const [allListings, setAllListings] = useState<Listing[]>([])
   const [requests, setRequests] = useState<InterestRequest[]>([])
@@ -436,11 +479,12 @@ function DashboardPage() {
   const statusLabel = (status: string) => status.charAt(0).toUpperCase() + status.slice(1)
   return <div className="page-container dashboard-page"><div className="dashboard-welcome"><div><span className="eyebrow">YOUR REUSEHUB SPACE</span><h1>Hey, {user.displayName.split(' ')[0]} <span className="wave">✳</span></h1><p>Everything you've shared and everything you're looking for, in one place.</p></div><Link to="/list-item" className="btn btn-primary"><PackagePlus size={17}/> List an item</Link></div>
     <div className="dashboard-stats"><div className="dash-stat"><span className="dash-stat-icon"><PackagePlus size={18}/></span><div><strong>{items.length}</strong><small>Your listings</small></div></div><div className="dash-stat"><span className="dash-stat-icon stat-amber"><MessageCircle size={18}/></span><div><strong>{incoming.filter(r => r.status === 'pending').length}</strong><small>New requests</small></div></div><div className="dash-stat"><span className="dash-stat-icon stat-blue"><HeartHandshake size={18}/></span><div><strong>{[...incoming, ...outgoing].filter(r => r.status === 'completed').length}</strong><small>Completed handovers</small></div></div></div>
-    <div className="dashboard-tabs" role="tablist"><button role="tab" aria-selected={tab === 'listings'} className={tab === 'listings' ? 'active' : ''} onClick={() => setTab('listings')}><Tag size={16}/> My listings <span>{items.length}</span></button><button role="tab" aria-selected={tab === 'incoming'} className={tab === 'incoming' ? 'active' : ''} onClick={() => setTab('incoming')}><ArrowDownRight size={16}/> Incoming <span>{incoming.length}</span></button><button role="tab" aria-selected={tab === 'outgoing'} className={tab === 'outgoing' ? 'active' : ''} onClick={() => setTab('outgoing')}><ArrowUpRight size={16}/> My requests <span>{outgoing.length}</span></button></div>
+    <div className="dashboard-tabs" role="tablist"><button role="tab" aria-selected={tab === 'listings'} className={tab === 'listings' ? 'active' : ''} onClick={() => setTab('listings')}><Tag size={16}/> My listings <span>{items.length}</span></button><button role="tab" aria-selected={tab === 'incoming'} className={tab === 'incoming' ? 'active' : ''} onClick={() => setTab('incoming')}><ArrowDownRight size={16}/> Incoming <span>{incoming.length}</span></button><button role="tab" aria-selected={tab === 'outgoing'} className={tab === 'outgoing' ? 'active' : ''} onClick={() => setTab('outgoing')}><ArrowUpRight size={16}/> My requests <span>{outgoing.length}</span></button><button role="tab" aria-selected={tab === 'contact'} className={tab === 'contact' ? 'active' : ''} onClick={() => setTab('contact')}><Phone size={16}/> Contact details</button></div>
     {loading ? <Spinner label="Loading your dashboard..."/> : error ? <ErrorPanel text={error} onRetry={load}/> : <>
       {tab === 'listings' && (items.length ? <div className="dashboard-listings">{items.sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(item => <div className="dashboard-listing-row" key={item.id}><img src={item.coverImage} alt="" onError={e => { e.currentTarget.src = imageForCategory(item.category) }}/><div className="dashboard-listing-main"><Link to={`/items/${item.id}`}><strong>{item.title}</strong></Link><span>{item.listingType === 'donation' ? 'Free donation' : money(item.price)} · {dateLabel(item.createdAt)}</span></div><span className={`status-badge status-${item.status}`}>{statusLabel(item.status)}</span><div className="dashboard-row-actions"><Link className="icon-button" to={`/items/${item.id}`} aria-label="View listing"><ExternalLink size={16}/></Link>{item.status !== 'completed' && item.status !== 'removed' && <Link className="icon-button" to={`/edit/${item.id}`} aria-label="Edit listing"><Pencil size={16}/></Link>}{item.status !== 'removed' && <button className="icon-button icon-danger" aria-label="Remove listing" onClick={() => remove(item)}><Trash2 size={16}/></button>}</div></div>)}</div> : <EmptyPanel title="Your shelf is still empty" text="List an unused book or study item and help it find its next owner." action={<Link to="/list-item" className="btn btn-primary">List your first item <ArrowRight size={16}/></Link>}/>)}
       {tab === 'incoming' && (incoming.length ? <div className="request-list">{incoming.map(req => { const item = items.find(i => i.id === req.listingId); return <div className="request-card" key={req.id}><div className="request-card-top"><span className="request-avatar">{req.buyerName.slice(0,1).toUpperCase()}</span><div className="request-person"><strong>{req.buyerName}</strong><small>Interested in <Link to={`/items/${req.listingId}`}>{item?.title || 'your listing'}</Link></small></div><span className={`status-badge status-${req.status}`}>{statusLabel(req.status)}</span></div>{req.message && <blockquote className="request-message">“{req.message}”</blockquote>}<div className="request-card-bottom"><small>Received {dateLabel(req.createdAt)}</small><div>{req.status === 'pending' && <><button className="btn btn-outline btn-small" onClick={() => void action(req, 'decline')}>Decline</button><button className="btn btn-primary btn-small" onClick={() => void action(req, 'accept')}><Check size={14}/> Accept request</button></>}{req.status === 'accepted' && <button className="btn btn-primary btn-small" onClick={() => void action(req, 'complete')}><PackageCheck size={14}/> Mark handover complete</button>}</div></div></div>})}</div> : <EmptyPanel title="No incoming requests yet" text="When a student is interested in your listing, their request will show up here."/>)}
       {tab === 'outgoing' && (outgoing.length ? <div className="request-list">{outgoing.map(req => { const item = allListings.find(i => i.id === req.listingId); return <div className="request-card" key={req.id}><div className="request-card-top"><div className="request-person"><strong><Link to={`/items/${req.listingId}`}>{item?.title || 'Requested item'}</Link></strong><small>Seller: {req.sellerId === user.id ? 'You' : (item?.sellerName || 'Student')}</small></div><span className={`status-badge status-${req.status}`}>{statusLabel(req.status)}</span></div>{req.message && <blockquote className="request-message">“{req.message}”</blockquote>}<div className="request-card-bottom"><small>Sent {dateLabel(req.createdAt)}</small><div>{req.status === 'pending' && <button className="btn btn-outline btn-small" onClick={() => void action(req, 'cancel')}>Cancel request</button>}{req.status === 'accepted' && <span className="status-help">Arrange the handover directly with the seller.</span>}{req.status === 'accepted' && <button className="btn btn-primary btn-small" onClick={() => void action(req, 'complete')}><PackageCheck size={14}/> Mark complete</button>}</div></div></div>})}</div> : <EmptyPanel title="No requests sent yet" text="Find a useful item and send a message to let the seller know you're interested." action={<Link to="/browse" className="btn btn-primary">Browse items <ArrowRight size={16}/></Link>}/>)}
+      {tab === 'contact' && <SellerContactSettings user={user}/>}
     </>}
     <div className="dashboard-safety"><ShieldCheck size={19}/><div><strong>A quick safety reminder</strong><p>Arrange handovers in a public place, inspect items before completing an exchange, and never share passwords or verification codes.</p></div><Link to="/guidelines">Read guidelines <ArrowRight size={14}/></Link></div>
   </div>
@@ -482,7 +526,7 @@ function AdminPage() {
 }
 
 function AboutPage() {
-  return <div className="page-container content-page"><span className="eyebrow">WHY REUSEHUB EXISTS</span><h1>Good things deserve<br/><em>another chapter.</em></h1><p className="content-lede">ReuseHub brings students together around a simple idea: educational materials should be easier to find, affordable to access, and useful for as long as possible.</p><div className="content-feature-grid"><div><span><HeartHandshake size={23}/></span><h3>Give without a barrier</h3><p>List an item as a free donation for someone who can use it next.</p></div><div><span><Tag size={23}/></span><h3>Resell at a fair price</h3><p>Choose an asking price and help another student spend less on educational essentials.</p></div><div><span><Leaf size={23}/></span><h3>Keep useful things moving</h3><p>Encourage reuse instead of letting serviceable books and supplies sit unused.</p></div></div><div className="content-section"><h2>The problem we're trying to solve</h2><p>Students often finish courses with materials they no longer need, while other students are searching for those same resources. Informal messaging groups can be difficult to search, and a donation-only model may not work for everyone. ReuseHub provides one searchable place for free donations and affordable resales, with clear listing details and a structured request workflow.</p><h2>How it works</h2><ol><li><strong>List:</strong> Add the item, explain its condition, upload a photo, and choose donation or resale.</li><li><strong>Discover:</strong> Other students can search and filter listings to find something useful.</li><li><strong>Connect:</strong> A buyer sends an interest request; the seller accepts or declines it.</li><li><strong>Pass it on:</strong> Students agree on a safe handover and mark the item completed.</li></ol><h2>What ReuseHub does not do</h2><p>The first version does not process payments, provide delivery, independently verify MRP, guarantee an item's condition, or certify a user's identity. Students should inspect an item and agree on payment and handover directly.</p></div><div className="content-cta"><div><strong>Have something useful to share?</strong><span>Let it find its next owner.</span></div><Link to="/list-item" className="btn btn-cream">List an item <ArrowRight size={16}/></Link></div></div>
+  return <div className="page-container content-page"><span className="eyebrow">WHY REUSEHUB EXISTS</span><h1>Good things deserve<br/><em>another chapter.</em></h1><p className="content-lede">ReuseHub brings students together around a simple idea: educational materials should be easier to find, affordable to access, and useful for as long as possible.</p><div className="content-feature-grid"><div><span><HeartHandshake size={23}/></span><h3>Give without a barrier</h3><p>List an item as a free donation for someone who can use it next.</p></div><div><span><Tag size={23}/></span><h3>Resell at a fair price</h3><p>Choose an asking price and help another student spend less on educational essentials.</p></div><div><span><Leaf size={23}/></span><h3>Keep useful things moving</h3><p>Encourage reuse instead of letting serviceable books and supplies sit unused.</p></div></div><div className="content-section"><h2>The problem we're trying to solve</h2><p>Students often finish courses with materials they no longer need, while other students are searching for those same resources. Informal messaging groups can be difficult to search, and a donation-only model may not work for everyone. ReuseHub provides one searchable place for free donations and affordable resales, with clear listing details and a structured request workflow.</p><h2>How it works</h2><ol><li><strong>List:</strong> Add the item, explain its condition, upload a photo, and choose donation or resale.</li><li><strong>Discover:</strong> Other students can search and filter listings to find something useful.</li><li><strong>Connect:</strong> Buyers can call or message a seller who has opted to share contact details, or send an interest request if contact details are private.</li><li><strong>Pass it on:</strong> Students agree on a safe handover and mark the item completed.</li></ol><h2>What ReuseHub does not do</h2><p>The first version does not process payments, provide delivery, independently verify MRP, guarantee an item's condition, or certify a user's identity. Students should inspect an item and agree on payment and handover directly.</p></div><div className="content-cta"><div><strong>Have something useful to share?</strong><span>Let it find its next owner.</span></div><Link to="/list-item" className="btn btn-cream">List an item <ArrowRight size={16}/></Link></div></div>
 }
 function GuidelinesPage() {
   const rules = [
